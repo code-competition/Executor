@@ -1,9 +1,13 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::File, io::Read};
 
 use bollard::{
-    container::{Config, CreateContainerOptions, WaitContainerOptions, LogsOptions, StartContainerOptions},
+    container::{
+        Config, CreateContainerOptions, LogsOptions, StartContainerOptions,
+        UploadToContainerOptions, WaitContainerOptions, RemoveContainerOptions,
+    },
     image::ListImagesOptions,
-    Docker, models::HostConfig,
+    models::HostConfig,
+    Docker,
 };
 use futures::StreamExt;
 
@@ -24,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .expect("could not get images");
 
-    println!("Found {} images", images.len());
+    println!("Found {} docker images", images.len());
 
     // Create container
     let options = Some(CreateContainerOptions {
@@ -32,11 +36,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let config = Config {
-        image: Some("ubuntu"),
-        cmd: Some(vec!["dmesg"]),
-        
+        image: Some("container-runtime"),
+        cmd: Some(vec!["./container-runtime"]),
+        network_disabled: Some(true),
+
         // This step is important as it ensures that the code is sandboxed with gVisor
         host_config: Some(HostConfig {
+            #[cfg(target_os = "linux")]
             runtime: Some("runsc".into()),
             ..Default::default()
         }),
@@ -44,31 +50,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let res = docker.create_container(options, config).await;
-    println!("{:?}", (res));
+    println!("Creating container {:?}", (res));
+
+    // Send folder to container
+    let options = Some(UploadToContainerOptions {
+        path: "/tmp",
+        ..Default::default()
+    });
+
+    let mut file = File::open("./code.tar.gz").unwrap();
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents).unwrap();
+
+    let res = docker
+        .upload_to_container("my-new-container", options, contents.into())
+        .await;
+    println!("Sending client code to container {:?}", (res));
 
     // Run container
-    let res = docker.start_container("my-new-container", None::<StartContainerOptions<String>>).await;
-    println!("{:?}", (res));
+    let res = docker
+        .start_container("my-new-container", None::<StartContainerOptions<String>>)
+        .await;
+    println!("Running docker container {:?}", (res));
 
-    // Await finish
-    let options = Some(WaitContainerOptions{
+    // Await container finish
+    let options = Some(WaitContainerOptions {
         condition: "not-running",
     });
 
     let mut stream = docker.wait_container("my-new-container", options);
     let res = stream.next().await;
-    println!("{:#?}", res);
+    println!("Waiting for container to finish {:#?}", res);
 
     // Get output from container
-    let options = Some(LogsOptions::<String>{
+    let options = Some(LogsOptions::<String> {
         stdout: true,
+        stderr: true,
         ..Default::default()
     });
 
     let mut stream = docker.logs("my-new-container", options);
     while let Some(Ok(val)) = stream.next().await {
-        println!("{:#?}", val);
+        println!("Logs: {:#?}", val);
     }
+
+    // Remove stopped container
+    let option = Some(RemoveContainerOptions {
+        ..Default::default()
+    });
+    let res = docker.remove_container("my-new-container", option).await;
+    println!("Removing container {:?}", (res));
 
     Ok(())
 }
