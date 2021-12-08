@@ -2,17 +2,33 @@ use std::{collections::HashMap, fs::File, io::Read};
 
 use bollard::{
     container::{
-        Config, CreateContainerOptions, LogsOptions, StartContainerOptions,
-        UploadToContainerOptions, WaitContainerOptions, RemoveContainerOptions,
+        Config, CreateContainerOptions, LogsOptions, RemoveContainerOptions, StartContainerOptions,
+        UploadToContainerOptions, WaitContainerOptions,
     },
     image::ListImagesOptions,
     models::HostConfig,
     Docker,
 };
 use futures::StreamExt;
+use tar::Header;
+
+pub mod container;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let code = String::from("fn main() { println!(\"{} Hello fucking World I work!\", 5 + 5); }");
+    let file = code.as_bytes();
+    let mut header = Header::new_gnu();
+    header.set_size(file.len() as u64);
+    header.set_cksum();
+
+    let mut output = Vec::new();
+    {
+        let mut tar = tar::Builder::new(&mut output);
+        tar.append_data(&mut header, "main.rs", file).unwrap();
+        tar.finish().unwrap();
+    }
+
     let docker = Docker::connect_with_socket_defaults().expect("failed to connect to docker api");
 
     // List images
@@ -58,12 +74,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     });
 
-    let mut file = File::open("./code.tar.gz").unwrap();
-    let mut contents = Vec::new();
-    file.read_to_end(&mut contents).unwrap();
-
     let res = docker
-        .upload_to_container("my-new-container", options, contents.into())
+        .upload_to_container("my-new-container", options, output.into())
         .await;
     println!("Sending client code to container {:?}", (res));
 
