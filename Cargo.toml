@@ -3,8 +3,6 @@ name = "executor"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 bollard = "0.11.0"
 futures = "0.3.18"
@@ -12,3 +10,10 @@ tokio = { version = "1.14.0", features = ["full"] }
 flate2 = "1.0.22"
 tar = "0.4.37"
 uuid = { version = "0.8.2", features = ["v4"] }
+tonic = "0.6.1"
+prost = "0.9.0"
+prost-types = "0.9"
+bytes = "1.1.0"
+
+[build-dependencies]
+tonic-build = { version = "0.6.2", features = ["prost"] }

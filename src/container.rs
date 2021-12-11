@@ -1,11 +1,13 @@
 use bollard::{
     container::{
-        Config, CreateContainerOptions, RemoveContainerOptions, StartContainerOptions,
-        UploadToContainerOptions, WaitContainerOptions, LogsOptions, LogOutput,
+        Config, CreateContainerOptions, LogOutput, LogsOptions,
+        RemoveContainerOptions, StartContainerOptions, UploadToContainerOptions,
+        WaitContainerOptions,
     },
     models::HostConfig,
     Docker,
 };
+
 use futures::StreamExt;
 use uuid::Uuid;
 
@@ -124,7 +126,10 @@ impl Container {
         Ok(())
     }
 
-    pub async fn get_output(&self, docker: &Docker) -> Result<Vec<LogOutput>, Box<dyn std::error::Error>> {
+    pub async fn get_output(
+        &self,
+        docker: &Docker,
+    ) -> Result<Vec<LogOutput>, Box<dyn std::error::Error>> {
         let options = Some(LogsOptions::<String> {
             stdout: true,
             stderr: true,
@@ -138,6 +143,10 @@ impl Container {
         }
 
         Ok(output)
+    }
+
+    pub async fn clear_logs(&self, _docker: &Docker) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
     }
 
     pub async fn remove(&self, docker: &Docker) -> Result<(), Box<dyn std::error::Error>> {
