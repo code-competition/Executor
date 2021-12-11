@@ -1,6 +1,6 @@
 use bollard::Docker;
 use sandbox::{sandbox_service_server::SandboxService, SandboxRequest, SandboxResponse};
-use tonic::{Request, Response, Status, transport::Server};
+use tonic::{transport::Server, Request, Response, Status};
 
 use crate::sandbox::sandbox_service_server::SandboxServiceServer;
 
@@ -20,37 +20,71 @@ impl SandboxService for Sandbox {
         request: Request<SandboxRequest>,
     ) -> Result<Response<SandboxResponse>, Status> {
         let req = request.into_inner();
+        let code = req.code;
+
+        let docker =
+            Docker::connect_with_socket_defaults().expect("failed to connect to docker api");
+
+        // Execute code and return stdout and stderr
+        let mut container = container::Container::new();
+
+        container
+            .create(&docker)
+            .await
+            .expect("failed to create container");
+
+        container
+            .upload_code(
+                container::languages::Languages::Rust,
+                &code.as_bytes(),
+                &docker,
+            )
+            .await
+            .expect("failed to upload code");
+
+        let run_time = std::time::Instant::now();
+        container
+            .run(&docker)
+            .await
+            .expect("failed to run container");
+        let run_time = run_time.elapsed();
+
+        let output = container
+            .get_output(&docker)
+            .await
+            .expect("could not get container output");
+
+        // Todo: FIX: they come in order but right now we just put them in seperate vectors
+        let mut stdout = Vec::new();
+        for out in output.0 {
+            stdout.push(String::from_utf8(out.to_vec()).unwrap());
+        }
+
+        let mut stderr = Vec::new();
+        for err in output.1 {
+            stderr.push(String::from_utf8(err.to_vec()).unwrap());
+        }
+
+        container
+            .remove(&docker)
+            .await
+            .expect("failed to remove container");
+
+        println!("{:?}", (stdout));
 
         let reply = SandboxResponse {
-            user_id: req.user_id,
-            stdout: todo!(),
-            stderr: todo!(),
-            runtime: todo!(),
+            stdout,
+            stderr,
+            runtime: run_time.as_millis() as u64,
         };
 
         Ok(Response::new(reply))
     }
 }
 
-// #[tokio::main]
-// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//     let addr = "[::1]:50051".parse().unwrap();
-//     let greeter = Sandbox::default();
-
-//     println!("GreeterServer listening on {}", addr);
-
-//     Server::builder()
-//         .add_service(GreeterServer::new(greeter))
-//         .serve(addr)
-//         .await?;
-
-//     Ok(())
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let docker = Docker::connect_with_socket_defaults().expect("failed to connect to docker api");
-
-    let addr = "[::1]:50051".parse().unwrap();
+    let addr = "127.0.0.1:50051".parse().unwrap();
     let sandbox = Sandbox::default();
 
     println!("GRPC Server listening on {}", addr);
@@ -59,34 +93,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_service(SandboxServiceServer::new(sandbox))
         .serve(addr)
         .await?;
-
-    // let mut container = container::Container::new();
-
-    // container.create(&docker).await.expect("failed to create container");
-
-    // let code = String::from("fn main() { println!(\"{} Yoo!\", 20 + 5); }");
-    // container.upload_code(container::languages::Languages::Rust, &code.as_bytes(), &docker).await.expect("failed to upload code");
-
-    // container.run(&docker).await.expect("failed to run container");
-
-    // let output = container.get_output(&docker).await.expect("could not get container output");
-    // for out in output {
-    //     println!("{:?}", out);
-    // }
-
-    // container.clear_logs(&docker).await?;
-
-    // let code = String::from("fn main() { println!(\"{} Yoo!\", 35 + 5); }");
-    // container.upload_code(container::languages::Languages::Rust, &code.as_bytes(), &docker).await.expect("failed to upload code");
-
-    // container.run(&docker).await.expect("failed to run container");
-
-    // let output = container.get_output(&docker).await.expect("could not get container output");
-    // for out in output {
-    //     println!("{:?}", out);
-    // }
-
-    // container.remove(&docker).await.expect("failed to remove container");
 
     Ok(())
 }

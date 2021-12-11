@@ -8,6 +8,7 @@ use bollard::{
     Docker,
 };
 
+use bytes::Bytes;
 use futures::StreamExt;
 use uuid::Uuid;
 
@@ -129,20 +130,26 @@ impl Container {
     pub async fn get_output(
         &self,
         docker: &Docker,
-    ) -> Result<Vec<LogOutput>, Box<dyn std::error::Error>> {
+    ) -> Result<(Vec<Bytes>, Vec<Bytes>), Box<dyn std::error::Error>> {
         let options = Some(LogsOptions::<String> {
             stdout: true,
             stderr: true,
             ..Default::default()
         });
 
-        let mut output = Vec::new();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
         let mut stream = docker.logs(&self.container_id.to_string(), options);
         while let Some(Ok(val)) = stream.next().await {
-            output.push(val);
+            match val {
+                LogOutput::StdErr { message } => stderr.push(message),
+                LogOutput::StdOut { message } => stdout.push(message),
+                _ => {}
+            }
         }
 
-        Ok(output)
+        Ok((stdout, stderr))
     }
 
     pub async fn clear_logs(&self, _docker: &Docker) -> Result<(), Box<dyn std::error::Error>> {
