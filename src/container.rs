@@ -59,31 +59,60 @@ impl Container {
         &self,
         languages: Languages,
         code: &[u8],
+        stdin: &[u8],
         docker: &Docker,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Assign a GNU header
-        let mut header = tar::Header::new_gnu();
-        header.set_size(code.len() as u64);
-        header.set_cksum();
-
-        // Tar the file
-        // Todo: GZip
-        let mut output = Vec::new();
+        // Upload code to compile
         {
-            let mut tar = tar::Builder::new(&mut output);
-            tar.append_data(&mut header, languages.get_filename(), code)
-                .unwrap();
-            tar.finish().unwrap();
+            // Assign a GNU header
+            let mut header = tar::Header::new_gnu();
+            header.set_size(code.len() as u64);
+            header.set_cksum();
+
+            // Tar the file
+            let mut output = Vec::new();
+            {
+                let mut tar = tar::Builder::new(&mut output);
+                tar.append_data(&mut header, languages.get_filename(), code)
+                    .unwrap();
+                tar.finish().unwrap();
+            }
+
+            let options = Some(UploadToContainerOptions {
+                path: "/tmp",
+                ..Default::default()
+            });
+
+            docker
+                .upload_to_container(&self.container_id.to_string(), options, output.into())
+                .await?;
         }
 
-        let options = Some(UploadToContainerOptions {
-            path: "/tmp",
-            ..Default::default()
-        });
+        // Upload stdin to run program with
+        {
+            // Assign a GNU header
+            let mut header = tar::Header::new_gnu();
+            header.set_size(code.len() as u64);
+            header.set_cksum();
 
-        docker
-            .upload_to_container(&self.container_id.to_string(), options, output.into())
-            .await?;
+            // Tar the file
+            let mut output = Vec::new();
+            {
+                let mut tar = tar::Builder::new(&mut output);
+                tar.append_data(&mut header, "stdin", stdin)
+                    .unwrap();
+                tar.finish().unwrap();
+            }
+
+            let options = Some(UploadToContainerOptions {
+                path: "/tmp",
+                ..Default::default()
+            });
+
+            docker
+                .upload_to_container(&self.container_id.to_string(), options, output.into())
+                .await?;
+        }
 
         Ok(())
     }

@@ -21,6 +21,7 @@ impl SandboxService for Sandbox {
     ) -> Result<Response<SandboxResponse>, Status> {
         let req = request.into_inner();
         let code = req.code;
+        let stdin = req.stdin;
 
         let docker =
             Docker::connect_with_socket_defaults().expect("failed to connect to docker api");
@@ -37,6 +38,7 @@ impl SandboxService for Sandbox {
             .upload_code(
                 container::languages::Languages::Rust,
                 code.as_bytes(),
+                stdin.as_bytes(),
                 &docker,
             )
             .await
