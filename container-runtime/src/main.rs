@@ -9,6 +9,19 @@ fn main() -> Result<(), std::io::Error> {
 
     // If rustc fails compilation
     if !out.status.success() {
+        // Write output to io
+        if out.stdout.len() > 0 {
+            std::io::stdout()
+                .write_all(&out.stdout)
+                .expect("failed to write output");
+        }
+
+        if out.stderr.len() > 0 {
+            std::io::stderr()
+                .write_all(&out.stderr)
+                .expect("failed to write output");
+        }
+
         std::process::exit(12);
     }
 

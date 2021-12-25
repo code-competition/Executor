@@ -1,8 +1,7 @@
 use bollard::{
     container::{
-        Config, CreateContainerOptions, LogOutput, LogsOptions,
-        RemoveContainerOptions, StartContainerOptions, UploadToContainerOptions,
-        WaitContainerOptions,
+        Config, CreateContainerOptions, LogOutput, LogsOptions, RemoveContainerOptions,
+        StartContainerOptions, UploadToContainerOptions, WaitContainerOptions,
     },
     models::HostConfig,
     Docker,
@@ -89,14 +88,18 @@ impl Container {
         Ok(())
     }
 
-    pub async fn run(&self, docker: &Docker) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(&self, docker: &Docker) -> Result<(), Error> {
         // Run container
         docker
             .start_container(
                 &self.container_id.to_string(),
                 None::<StartContainerOptions<String>>,
             )
-            .await?;
+            .await
+            .map_err(|_| Error {
+                status_code: 15,
+                error: None,
+            })?;
 
         // Await container finish
         let options = Some(WaitContainerOptions {
@@ -110,18 +113,22 @@ impl Container {
         let res = match res {
             Some(e) => e,
             None => {
-                return Err(Box::new(Error {
+                return Err(Error {
                     status_code: 1,
                     error: None,
-                }));
+                });
             }
-        }?;
+        }
+        .map_err(|_| Error {
+            status_code: 13,
+            error: None,
+        })?;
 
         if res.status_code != 0 {
-            return Err(Box::new(Error {
+            return Err(Error {
                 status_code: res.status_code,
                 error: res.error,
-            }));
+            });
         }
 
         Ok(())
@@ -172,5 +179,11 @@ impl Container {
     /// Get a reference to the container's container id.
     pub fn container_id(&self) -> Uuid {
         self.container_id
+    }
+}
+
+impl Default for Container {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -36,17 +36,14 @@ impl SandboxService for Sandbox {
         container
             .upload_code(
                 container::languages::Languages::Rust,
-                &code.as_bytes(),
+                code.as_bytes(),
                 &docker,
             )
             .await
             .expect("failed to upload code");
 
         let run_time = std::time::Instant::now();
-        container
-            .run(&docker)
-            .await
-            .expect("failed to run container");
+        let success = matches!(container.run(&docker).await, Ok(_));
         let run_time = run_time.elapsed();
 
         let output = container
@@ -70,11 +67,10 @@ impl SandboxService for Sandbox {
             .await
             .expect("failed to remove container");
 
-        println!("{:?}", (stdout));
-
         let reply = SandboxResponse {
             stdout,
             stderr,
+            success,
             runtime: run_time.as_millis() as u64,
         };
 
