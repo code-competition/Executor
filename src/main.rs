@@ -34,11 +34,12 @@ impl SandboxService for Sandbox {
             .await
             .expect("failed to create container");
 
+        let stdin_count = stdin.len();
         container
             .upload_code(
                 container::languages::Languages::Rust,
                 code.as_bytes(),
-                stdin.as_bytes(),
+                stdin,
                 &docker,
             )
             .await
@@ -53,15 +54,21 @@ impl SandboxService for Sandbox {
             .await
             .expect("could not get container output");
 
-        // Todo: FIX: they come in order but right now we just put them in seperate vectors
-        let mut stdout = Vec::new();
-        for out in output.0 {
-            stdout.push(String::from_utf8(out.to_vec()).unwrap());
-        }
-
         let mut stderr = Vec::new();
         for err in output.1 {
             stderr.push(String::from_utf8(err.to_vec()).unwrap());
+        }
+
+        let mut stdout = Vec::new();
+        if stderr.is_empty() {
+            String::from_utf8(output.0.first().unwrap().to_vec())
+                .unwrap()
+                .split("TESTING_NEXT_STDIN")
+                .skip(1).for_each(|e| stdout.push(snailquote::unescape(e).unwrap()));
+        }
+
+        if success && stdout.len() == stdin_count-1 {
+            return Err(Status::internal("internal error while compiling"));
         }
 
         container
